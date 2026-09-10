@@ -83,9 +83,14 @@ npx hardhat run scripts/deploy.ts --network localhost
 ### 5. Setup Database
 ```bash
 cd backend
-npx prisma generate
-npx prisma db push
+npm install
+npm run db:setup
 ```
+
+`db:setup` applies the committed Prisma migrations and loads idempotent
+development projections for Admin, Manager, Auditor, and User roles. Set
+`DATABASE_URL` from `backend/.env.example` first; never commit real database
+credentials.
 
 ### 6. Start Services
 ```bash

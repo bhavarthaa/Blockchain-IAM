@@ -1,0 +1,472 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IdentityStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum AssetType {
+  DIGITAL
+  PHYSICAL
+}
+
+enum AssetStatus {
+  ACTIVE
+  BURNED
+}
+
+enum RoleCode {
+  ADMIN
+  MANAGER
+  AUDITOR
+  USER
+}
+
+enum TransactionStatus {
+  CREATED
+  SUBMITTED
+  MINED
+  CONFIRMED
+  FAILED
+  REORGED
+  UNKNOWN
+}
+
+enum EventProcessingStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  REVERTED
+}
+
+enum VerificationType {
+  DID
+  ASSET
+  OWNERSHIP
+  AUDIT
+}
+
+enum VerificationResult {
+  VERIFIED
+  NOT_FOUND
+  MISMATCH
+  STALE
+  ERROR
+}
+
+enum AuditAction {
+  IDENTITY_CREATED
+  IDENTITY_UPDATED
+  IDENTITY_REVOKED
+  IDENTITY_RESTORED
+  ROLE_ASSIGNED
+  ROLE_REVOKED
+  PERMISSION_CONFIGURED
+  ASSET_MINTED
+  ASSET_ASSIGNED
+  ASSET_TRANSFERRED
+  ASSET_BURNED
+  METADATA_UPDATED
+}
+
+model WalletAddress {
+  id             String   @id @default(cuid())
+  address        String   @db.VarChar(42)
+  chainId        Int
+  firstSeenBlock BigInt?
+  lastSeenBlock  BigInt?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  identities           Identity[]
+  ownedAssets          Asset[]                 @relation("CurrentAssetOwner")
+  createdAssets        Asset[]                 @relation("AssetCreator")
+  sentTransfers        OwnershipTransfer[]     @relation("TransferFrom")
+  receivedTransfers    OwnershipTransfer[]     @relation("TransferTo")
+  operatedTransfers    OwnershipTransfer[]     @relation("TransferOperator")
+  roleAssignments      WalletRoleAssignment[]
+  transactions         BlockchainTransaction[] @relation("TransactionSender")
+  verificationRequests VerificationRecord[]
+
+  @@unique([chainId, address])
+  @@index([address])
+  @@map("wallet_addresses")
+}
+
+model Identity {
+  id                 String         @id @default(cuid())
+  chainId            Int
+  did                String         @db.VarChar(512)
+  didKey             String         @db.Char(66)
+  walletAddressId    String
+  status             IdentityStatus @default(ACTIVE)
+  roleCode           RoleCode?
+  documentHash       String?        @db.Char(66)
+  createdBlockNumber BigInt
+  createdTxId        String
+  revokedBlockNumber BigInt?
+  revokedTxId        String?
+  lastChainBlock     BigInt
+  createdAt          DateTime
+  updatedAt          DateTime       @updatedAt
+
+  wallet              WalletAddress          @relation(fields: [walletAddressId], references: [id])
+  createdTransaction  BlockchainTransaction  @relation("IdentityCreatedByTx", fields: [createdTxId], references: [id])
+  revokedTransaction  BlockchainTransaction? @relation("IdentityRevokedByTx", fields: [revokedTxId], references: [id])
+  roleAssignments     WalletRoleAssignment[]
+  auditRecords        AuditRecord[]
+  verificationRecords VerificationRecord[]
+
+  @@unique([chainId, did])
+  @@unique([chainId, didKey])
+  @@unique([chainId, walletAddressId])
+  @@index([chainId, status])
+  @@index([walletAddressId, status])
+  @@map("identities")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  chainId     Int
+  roleKey     String   @db.Char(66)
+  name        RoleCode
+  displayName String?
+  onChain     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+  assignments WalletRoleAssignment[]
+
+  @@unique([chainId, roleKey])
+  @@unique([chainId, name])
+  @@index([chainId, name])
+  @@map("roles")
+}
+
+model Permission {
+  id            String   @id @default(cuid())
+  permissionKey String   @db.Char(66)
+  name          String   @db.VarChar(64)
+  description   String?
+  createdAt     DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@unique([permissionKey])
+  @@unique([name])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId            String
+  permissionId      String
+  enabled           Boolean  @default(true)
+  sourceBlockNumber BigInt?
+  sourceEventId     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  role        Role          @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission  Permission    @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  sourceEvent IndexedEvent? @relation(fields: [sourceEventId], references: [id])
+
+  @@id([roleId, permissionId])
+  @@index([permissionId, enabled])
+  @@map("role_permissions")
+}
+
+model WalletRoleAssignment {
+  id                  String   @id @default(cuid())
+  chainId             Int
+  walletAddressId     String
+  roleId              String
+  identityId          String?
+  active              Boolean  @default(true)
+  assignedBlockNumber BigInt
+  assignedTxId        String
+  revokedBlockNumber  BigInt?
+  revokedTxId         String?
+  createdAt           DateTime
+  updatedAt           DateTime @updatedAt
+
+  wallet              WalletAddress          @relation(fields: [walletAddressId], references: [id])
+  role                Role                   @relation(fields: [roleId], references: [id])
+  identity            Identity?              @relation(fields: [identityId], references: [id])
+  assignedTransaction BlockchainTransaction  @relation("RoleAssignedByTx", fields: [assignedTxId], references: [id])
+  revokedTransaction  BlockchainTransaction? @relation("RoleRevokedByTx", fields: [revokedTxId], references: [id])
+
+  @@unique([chainId, walletAddressId, roleId])
+  @@index([chainId, active])
+  @@index([walletAddressId, active])
+  @@index([roleId, active])
+  @@map("wallet_role_assignments")
+}
+
+model Asset {
+  id                String      @id @default(cuid())
+  chainId           Int
+  tokenId           BigInt
+  contractAddress   String      @db.VarChar(42)
+  status            AssetStatus @default(ACTIVE)
+  assetType         AssetType?
+  currentOwnerId    String?
+  creatorId         String
+  metadataUri       String      @db.VarChar(2048)
+  metadataHash      String?     @db.Char(66)
+  name              String?
+  description       String?
+  imageUri          String?
+  serialNumber      String?
+  mintedBlockNumber BigInt
+  mintedTxId        String
+  burnedBlockNumber BigInt?
+  burnedTxId        String?
+  createdAt         DateTime
+  updatedAt         DateTime    @updatedAt
+
+  currentOwner        WalletAddress?         @relation("CurrentAssetOwner", fields: [currentOwnerId], references: [id])
+  creator             WalletAddress          @relation("AssetCreator", fields: [creatorId], references: [id])
+  mintedTransaction   BlockchainTransaction  @relation("AssetMintedByTx", fields: [mintedTxId], references: [id])
+  burnedTransaction   BlockchainTransaction? @relation("AssetBurnedByTx", fields: [burnedTxId], references: [id])
+  ownershipHistory    OwnershipTransfer[]
+  auditRecords        AuditRecord[]
+  verificationRecords VerificationRecord[]
+
+  @@unique([chainId, contractAddress, tokenId])
+  @@index([chainId, status])
+  @@index([currentOwnerId, status])
+  @@index([creatorId])
+  @@index([serialNumber])
+  @@map("assets")
+}
+
+model OwnershipTransfer {
+  id               String   @id @default(cuid())
+  chainId          Int
+  assetId          String
+  fromWalletId     String?
+  toWalletId       String?
+  operatorWalletId String?
+  transactionId    String
+  eventId          String
+  blockNumber      BigInt
+  logIndex         Int
+  reason           String?  @db.VarChar(64)
+  createdAt        DateTime
+
+  asset          Asset                 @relation(fields: [assetId], references: [id])
+  fromWallet     WalletAddress?        @relation("TransferFrom", fields: [fromWalletId], references: [id])
+  toWallet       WalletAddress?        @relation("TransferTo", fields: [toWalletId], references: [id])
+  operatorWallet WalletAddress?        @relation("TransferOperator", fields: [operatorWalletId], references: [id])
+  transaction    BlockchainTransaction @relation(fields: [transactionId], references: [id])
+  event          IndexedEvent          @relation(fields: [eventId], references: [id])
+
+  @@unique([chainId, transactionId, logIndex])
+  @@index([assetId, blockNumber])
+  @@index([toWalletId, createdAt])
+  @@index([fromWalletId, createdAt])
+  @@map("ownership_transfers")
+}
+
+model BlockchainTransaction {
+  id                String            @id @default(cuid())
+  chainId           Int
+  txHash            String            @db.Char(66)
+  fromWalletId      String?
+  toAddress         String?           @db.VarChar(42)
+  contractAddress   String?           @db.VarChar(42)
+  nonce             BigInt?
+  blockNumber       BigInt?
+  blockHash         String?           @db.Char(66)
+  transactionIndex  Int?
+  status            TransactionStatus @default(CREATED)
+  confirmations     Int               @default(0)
+  gasUsed           BigInt?
+  effectiveGasPrice BigInt?
+  failureReason     String?
+  submittedAt       DateTime?
+  minedAt           DateTime?
+  confirmedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  fromWallet         WalletAddress?         @relation("TransactionSender", fields: [fromWalletId], references: [id])
+  events             IndexedEvent[]
+  ownershipTransfers OwnershipTransfer[]
+  identitiesCreated  Identity[]             @relation("IdentityCreatedByTx")
+  identitiesRevoked  Identity[]             @relation("IdentityRevokedByTx")
+  roleAssignments    WalletRoleAssignment[] @relation("RoleAssignedByTx")
+  roleRevocations    WalletRoleAssignment[] @relation("RoleRevokedByTx")
+  assetsMinted       Asset[]                @relation("AssetMintedByTx")
+  assetsBurned       Asset[]                @relation("AssetBurnedByTx")
+  auditRecords       AuditRecord[]
+
+  @@unique([chainId, txHash])
+  @@index([chainId, status])
+  @@index([fromWalletId, createdAt])
+  @@index([contractAddress, blockNumber])
+  @@map("blockchain_transactions")
+}
+
+model IndexedEvent {
+  id               String                @id @default(cuid())
+  chainId          Int
+  transactionId    String
+  contractAddress  String                @db.VarChar(42)
+  eventName        String                @db.VarChar(128)
+  blockNumber      BigInt
+  blockHash        String                @db.Char(66)
+  transactionHash  String                @db.Char(66)
+  transactionIndex Int?
+  logIndex         Int
+  topic0           String?               @db.Char(66)
+  topics           Json
+  data             Json
+  status           EventProcessingStatus @default(PENDING)
+  processingError  String?
+  observedAt       DateTime              @default(now())
+  processedAt      DateTime?
+
+  transaction        BlockchainTransaction @relation(fields: [transactionId], references: [id])
+  rolePermissions    RolePermission[]
+  ownershipTransfers OwnershipTransfer[]
+  auditRecords       AuditRecord[]
+
+  @@unique([chainId, transactionHash, logIndex])
+  @@index([chainId, blockNumber, logIndex])
+  @@index([contractAddress, eventName, blockNumber])
+  @@index([status, observedAt])
+  @@map("indexed_events")
+}
+
+model AuditRecord {
+  id               String      @id @default(cuid())
+  chainId          Int
+  eventId          String
+  transactionId    String
+  action           AuditAction
+  emitterAddress   String      @db.VarChar(42)
+  actorAddress     String?     @db.VarChar(42)
+  targetDidKey     String?     @db.Char(66)
+  targetIdentityId String?
+  targetTokenId    BigInt?
+  targetAssetId    String?
+  metadataHash     String?     @db.Char(66)
+  metadata         Json?
+  blockNumber      BigInt
+  blockHash        String      @db.Char(66)
+  logIndex         Int
+  occurredAt       DateTime
+  createdAt        DateTime    @default(now())
+
+  event          IndexedEvent          @relation(fields: [eventId], references: [id])
+  transaction    BlockchainTransaction @relation(fields: [transactionId], references: [id])
+  targetIdentity Identity?             @relation(fields: [targetIdentityId], references: [id])
+  targetAsset    Asset?                @relation(fields: [targetAssetId], references: [id])
+
+  @@unique([chainId, eventId])
+  @@index([chainId, action, occurredAt])
+  @@index([emitterAddress, occurredAt])
+  @@index([targetDidKey])
+  @@index([targetTokenId])
+  @@index([transactionId])
+  @@map("audit_records")
+}
+
+model VerificationRecord {
+  id                String             @id @default(cuid())
+  chainId           Int
+  type              VerificationType
+  result            VerificationResult
+  requestedDid      String?
+  requestedTokenId  BigInt?
+  identityId        String?
+  assetId           String?
+  walletAddressId   String?
+  verifiedAtBlock   BigInt?
+  verifiedBlockHash String?            @db.Char(66)
+  source            String             @db.VarChar(32)
+  responseSnapshot  Json?
+  errorMessage      String?
+  createdAt         DateTime           @default(now())
+
+  identity Identity?      @relation(fields: [identityId], references: [id])
+  asset    Asset?         @relation(fields: [assetId], references: [id])
+  wallet   WalletAddress? @relation(fields: [walletAddressId], references: [id])
+
+  @@index([chainId, type, result, createdAt])
+  @@index([identityId, createdAt])
+  @@index([assetId, createdAt])
+  @@map("verification_records")
+}
+
+model IndexerCheckpoint {
+  id                 String   @id @default(cuid())
+  chainId            Int
+  scope              String   @db.VarChar(128)
+  nextBlock          BigInt
+  lastProcessedBlock BigInt
+  lastBlockHash      String?  @db.Char(66)
+  deploymentBlock    BigInt
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  @@unique([chainId, scope])
+  @@index([chainId, lastProcessedBlock])
+  @@map("indexer_checkpoints")
+}
+
+model AuthNonce {
+  id         String    @id @default(cuid())
+  nonce      String    @unique @db.VarChar(128)
+  address    String    @db.VarChar(42)
+  chainId    Int
+  domain     String    @db.VarChar(255)
+  uri        String    @db.VarChar(2048)
+  issuedAt   DateTime
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([address, chainId, expiresAt])
+  @@map("auth_nonces")
+}
+
+model AuthSession {
+  id         String    @id @default(cuid())
+  tokenId    String    @unique @db.VarChar(128)
+  address    String    @db.VarChar(42)
+  chainId    Int
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([address, chainId, expiresAt])
+  @@map("auth_sessions")
+}
+
+model IdempotencyRecord {
+  id            String   @id @default(cuid())
+  key           String   @db.VarChar(255)
+  route         String   @db.VarChar(255)
+  walletAddress String   @db.VarChar(42)
+  requestHash   String   @db.Char(64)
+  operationId   String?
+  response      Json?
+  statusCode    Int?
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@unique([walletAddress, route, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}

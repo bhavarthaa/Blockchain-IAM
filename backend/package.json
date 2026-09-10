@@ -1,0 +1,52 @@
+{
+  "name": "blockchain-iam-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Database and indexing foundation for the Blockchain IAM backend",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node --enable-source-maps dist/server.js",
+    "build": "tsc --outDir dist --noEmit false",
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:format": "prisma format",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:setup": "npm run db:generate && npm run db:migrate:deploy && npm run db:seed",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "jose": "^6.2.12",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "siwe": "^3.0.0",
+    "viem": "^2.56.3",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.14.10",
+    "@types/supertest": "^7.2.1",
+    "prisma": "^5.22.0",
+    "supertest": "^7.2.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.9"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

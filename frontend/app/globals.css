@@ -37,18 +37,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 ::selection { background: rgb(var(--cyan) / .25); color: rgb(var(--ink)); }
 
 @layer components {
-  .card { @apply rounded-md border border-line/70 bg-panel/90 shadow-glow; }
-  .card-raised { @apply rounded-md border border-line bg-panel-raised/80 shadow-glow; }
+  .card { @apply rounded-none border border-line/70 bg-panel/90 shadow-none; }
+  .card-raised { @apply rounded-none border border-line bg-panel-raised/80 shadow-none; }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-sm font-medium text-ink transition duration-200 hover:-translate-y-px hover:border-cyan/70 hover:bg-cyan/10 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-none border border-line bg-panel px-3 py-2 text-sm font-medium text-ink transition duration-200 hover:-translate-y-px hover:border-cyan/70 hover:bg-cyan/10 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-50;
   }
   .btn-primary { @apply border-cyan/50 bg-cyan/15 text-cyan hover:bg-cyan/25; }
   .btn-danger { @apply border-danger/50 bg-danger/10 text-danger hover:bg-danger/20; }
-  .field { @apply w-full rounded-md border border-line bg-surface/70 px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-cyan; }
+  .field { @apply w-full rounded-none border border-line bg-surface/70 px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-cyan; }
   .eyebrow { @apply text-[10px] font-semibold uppercase tracking-[.18em] text-muted; }
   .status { @apply inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide; }
   .data-label { @apply text-[11px] font-medium uppercase tracking-[.12em] text-muted; }
   .table-row { @apply border-b border-line/50 transition-colors hover:bg-cyan/[.035]; }
+  .console-panel { @apply border border-line/70 bg-panel/75; }
+  .section-band { @apply border-y border-line/70 bg-surface/35; }
+  .command-bar { @apply flex items-center border border-line/70 bg-panel/60; }
+  .metric-rail { @apply border-y border-line/70 bg-panel/60; }
+  .data-rail { @apply border-l-2 border-cyan/50 bg-panel/50; }
+  .rule-label { @apply flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[.2em] text-muted; }
 }
 
 @media (prefers-reduced-motion: reduce) {

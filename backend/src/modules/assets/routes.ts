@@ -46,6 +46,11 @@ assetRouter.post("/:tokenId/assign", requirePermission("ASSET_ASSIGN"), asyncHan
 assetRouter.post("/:tokenId/transfer", requirePermission("ASSET_TRANSFER"), asyncHandler(async (req, res) => {
   const id = token.safeParse(req.params.tokenId); if (!id.success) throw ApiError.badRequest("Invalid token ID");
   const body = parseBody(z.object({ from: addr, to: addr }).strict(), req);
+  // The relayer is the on-chain sender, so never let it turn a caller's
+  // generic transfer permission into an arbitrary-owner transfer.
+  if (body.from.toLowerCase() !== req.auth!.wallet.toLowerCase()) {
+    throw ApiError.forbidden("Relayed transfers must be signed by the asset owner");
+  }
   const result = await submitTransaction({ ...routeArgs(req, body), write: { abi: AssetNFTAbi, address: config.ASSET_NFT_ADDRESS, functionName: "transferAsset", args: [body.from, body.to, BigInt(id.data)] } });
   sendData(res, req, result, 202, { freshness: "pending" });
 }));

@@ -47,7 +47,8 @@ export function requirePermission(permission: string) {
       const checker = req.app.locals.permissionChecker as
         | ((wallet: `0x${string}`, chainId: number, permission: string) => Promise<boolean>)
         | undefined;
-      if (checker && !(await checker(req.auth.wallet, req.auth.chainId, permission))) {
+      if (!checker) return next(ApiError.unavailable("Authorization service is not configured"));
+      if (!(await checker(req.auth.wallet, req.auth.chainId, permission))) {
         return next(ApiError.forbidden(`The wallet does not have ${permission} permission.`));
       }
       return next();

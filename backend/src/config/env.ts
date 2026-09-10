@@ -23,9 +23,7 @@ const envSchema = z.object({
 });
 
 const parsed = envSchema.safeParse(process.env);
-if (!parsed.success) {
-  throw new Error(`Invalid environment: ${parsed.error.message}`);
-}
+if (!parsed.success) throw new Error(`Invalid environment: ${parsed.error.message}`);
 
 export const config = parsed.data;
 if (config.NODE_ENV === "production" && config.SESSION_SECRET === "development-only-change-me-please-32-chars") {

@@ -24,7 +24,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<Enve
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (token) headers.set("Authorization", "Bearer " + token);
   if (path.startsWith("/api/v1/") && init.method && init.method !== "GET") headers.set("Idempotency-Key", crypto.randomUUID());
   const chainId = process.env.NEXT_PUBLIC_CHAIN_ID;
   if (chainId) headers.set("X-Chain-Id", chainId);

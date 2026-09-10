@@ -9,6 +9,7 @@ const config: Config = {
         ink: "rgb(var(--ink) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",
         panel: "rgb(var(--panel) / <alpha-value>)",
+        "panel-raised": "rgb(var(--panel-raised) / <alpha-value>)",
         muted: "rgb(var(--muted) / <alpha-value>)",
         line: "rgb(var(--line) / <alpha-value>)",
         cyan: "rgb(var(--cyan) / <alpha-value>)",

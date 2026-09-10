@@ -1,0 +1,694 @@
+# SIH Blockchain IAM — Technical Blueprint
+**Blockchain-Based Secure Platform for Identity, Access Control, and Digital Asset Management**  
+Category: Software | Theme: Cybersecurity & Blockchain
+
+---
+
+## 1. Executive Summary
+
+This document defines the technical architecture for a decentralized platform that unifies **DID-based identity management**, **role-based access control (RBAC)**, and **NFT-based digital asset ownership** on a blockchain. The system eliminates centralized IAM vulnerabilities (single point of failure, identity theft, unauthorized access) by enforcing authorization at the smart-contract layer and providing an immutable audit trail.
+
+**Core Problem Solved:** Centralized IAM systems create security/operational risks. This platform replaces them with a trustless, tamper-proof system where identity, permissions, and asset ownership are cryptographically verifiable on-chain.
+
+---
+
+## 2. System Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              SIH BLOCKCHAIN IAM                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────┐  │
+│  │   FRONTEND   │◄──►│   BACKEND    │◄──►│  BLOCKCHAIN  │◄──►│  INDEXER │  │
+│  │  (Next.js)   │    │ (Node/TS)    │    │  (EVM)       │    │ (Events) │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘    └──────────┘  │
+│        │                    │                    │                    │      │
+│        ▼                    ▼                    ▼                    ▼      │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────┐  │
+│  │  Wallet      │    │  PostgreSQL  │    │  Smart       │    │  Prisma  │  │
+│  │  (MetaMask)  │    │  (Prisma)    │    │  Contracts   │    │  ORM     │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘    └──────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.1 Technology Stack
+
+| Layer | Technology | Version | Justification |
+|-------|------------|---------|---------------|
+| **Blockchain** | Ethereum (EVM-compatible) | — | Standard for smart contracts, tooling, wallet support |
+| **Smart Contracts** | Solidity + Hardhat + OpenZeppelin | ^0.8.24 | Security-audited libraries, mature dev framework |
+| **Backend** | Node.js + TypeScript + Express | 20 LTS | Type safety, async I/O, ecosystem |
+| **Database** | PostgreSQL + Prisma ORM | 15+ / 5.x | Relational integrity, type-safe queries |
+| **Frontend** | Next.js 14 (App Router) + React 18 | 14.x | SSR, wallet adapters, performance |
+| **Styling** | Tailwind CSS + shadcn/ui | 3.x | Rapid UI, consistent design system |
+| **Wallet** | Wagmi + Viem + RainbowKit | 2.x | Modern React hooks for wallet interaction |
+| **Indexing** | Custom event listener (ethers/viem) | — | Real-time DB sync with chain |
+| **Auth** | SIWE (Sign-In with Ethereum) | — | Wallet-based stateless auth |
+
+---
+
+## 3. Functional Modules
+
+### 3.1 Identity Management Module
+**Purpose:** Create, manage, and verify decentralized identities (DIDs) compliant with W3C DID spec.
+
+| Function | Description | On-Chain / Off-Chain |
+|----------|-------------|---------------------|
+| `createIdentity(address, didDocument)` | Register new DID linked to wallet address | On-chain (IdentityRegistry) |
+| `resolveDID(did)` | Return DID document (public keys, services) | On-chain view / Off-chain cache |
+| `updateDIDDocument(did, newDoc)` | Rotate keys, update service endpoints | On-chain (admin/owner only) |
+| `revokeIdentity(did)` | Mark identity as revoked | On-chain |
+| `verifyCredential(did, credential)` | Verify VC proof (future extension) | Off-chain (backend) |
+
+**Data Model (IdentityRegistry):**
+```solidity
+struct Identity {
+    string did;                    // did:ethr:0x...
+    address wallet;                // Owner wallet
+    uint8 role;                    // 0=None, 1=User, 2=Manager, 3=Auditor, 4=Admin
+    bool isActive;
+    uint256 createdAt;
+    string didDocumentHash;        // IPFS hash of DID document
+}
+```
+
+### 3.2 Role-Based Access Control (RBAC) Module
+**Purpose:** Define roles and enforce granular permissions via OpenZeppelin AccessControl.
+
+| Role | Permissions (Actions) | Description |
+|------|----------------------|-------------|
+| **Admin** | All 10 actions | Full system control, role assignment, contract admin |
+| **Manager** | Mint, Assign, Transfer, Burn, UpdateMetadata | Asset lifecycle management |
+| **Auditor** | Read, Verify, AuditExport | Read-only verification & compliance |
+| **User** | Read, TransferOwn (own assets) | Self-service asset viewing & transfer |
+
+**Permission Actions (10 total):**
+1. `IDENTITY_CREATE` — Register new DID
+2. `IDENTITY_UPDATE` — Modify DID document
+3. `IDENTITY_REVOKE` — Revoke identity
+4. `ROLE_ASSIGN` — Grant/revoke roles
+5. `ASSET_MINT` — Create new NFT
+6. `ASSET_ASSIGN` — Transfer NFT to identity
+7. `ASSET_TRANSFER` — Transfer between identities
+8. `ASSET_BURN` — Destroy NFT
+9. `ASSET_METADATA_UPDATE` — Update tokenURI
+10. `AUDIT_EXPORT` — Export audit logs
+
+**Implementation:** OpenZeppelin `AccessControl` + custom `RoleManager` contract mapping roles → permission bitmasks.
+
+### 3.3 Digital Asset Management (NFT) Module
+**Purpose:** Mint, assign, transfer, and track ownership of digital/physical assets as ERC-721 tokens.
+
+| Function | Description | Access Control |
+|----------|-------------|----------------|
+| `mintAsset(to, metadataURI)` | Create new NFT with IPFS metadata | Admin, Manager |
+| `assignAsset(tokenId, toDid)` | Transfer NFT to identity's wallet | Admin, Manager |
+| `transferAsset(from, to, tokenId)` | Peer-to-peer transfer | Owner, Manager, Admin |
+| `burnAsset(tokenId)` | Destroy NFT | Admin, Manager |
+| `updateMetadata(tokenId, newURI)` | Update tokenURI (IPFS) | Admin, Manager |
+| `getOwnershipHistory(tokenId)` | Return full transfer chain | Public view |
+| `verifyOwnership(did, tokenId)` | Cryptographic proof of ownership | Public view |
+
+**Asset Metadata Schema (IPFS JSON):**
+```json
+{
+  "name": "Asset Name",
+  "description": "Detailed description",
+  "image": "ipfs://Qm...",
+  "attributes": [
+    {"trait_type": "AssetType", "value": "Digital|Physical"},
+    {"trait_type": "SerialNumber", "value": "SN-12345"},
+    {"trait_type": "Issuer", "value": "Organization Name"},
+    {"trait_type": "IssueDate", "value": "2024-01-15"}
+  ],
+  "external_url": "https://org.com/asset/123"
+}
+```
+
+### 3.4 Audit Logging Module
+**Purpose:** Immutable, tamper-proof record of all critical operations.
+
+| Event | Parameters | Indexed Fields |
+|-------|------------|----------------|
+| `IdentityCreated` | did, wallet, role, timestamp | did, wallet |
+| `IdentityUpdated` | did, oldDocHash, newDocHash | did |
+| `IdentityRevoked` | did, revoker | did |
+| `RoleAssigned` | did, role, assigner | did, role |
+| `RoleRevoked` | did, role, revoker | did, role |
+| `AssetMinted` | tokenId, minter, metadataURI | tokenId, minter |
+| `AssetAssigned` | tokenId, from, toDid | tokenId, toDid |
+| `AssetTransferred` | tokenId, from, to | tokenId, from, to |
+| `AssetBurned` | tokenId, burner | tokenId |
+| `MetadataUpdated` | tokenId, oldURI, newURI | tokenId |
+| `PermissionChecked` | caller, action, result | caller, action |
+
+**Storage:** Events emitted from smart contracts → indexed by backend → stored in PostgreSQL for fast querying + available on-chain for verification.
+
+### 3.5 Verification & Public Lookup Module
+**Purpose:** Allow anyone to verify identity, asset ownership, and audit trail without authentication.
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /verify/did/{did}` | Returns DID document + role + status |
+| `GET /verify/asset/{tokenId}` | Returns asset metadata + ownership history + current owner |
+| `GET /verify/ownership/{did}/{tokenId}` | Boolean proof of ownership |
+| `GET /audit/timeline` | Filterable audit log (date, action, actor, target) |
+| `GET /audit/export` | CSV/JSON export of filtered logs |
+
+---
+
+## 4. User Roles & Permissions Matrix
+
+| Action | Admin | Manager | Auditor | User | Public |
+|--------|-------|---------|---------|------|--------|
+| Create Identity | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Update Identity | ✅ | ❌ | ❌ | Owner* | ❌ |
+| Revoke Identity | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Assign Role | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Mint Asset | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Assign Asset | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Transfer Asset (any) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Transfer Asset (own) | ✅ | ✅ | ❌ | ✅ | ❌ |
+| Burn Asset | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Update Metadata | ✅ | ✅ | ❌ | ❌ | ❌ |
+| View Audit Log | ✅ | ✅ | ✅ | ❌ | ✅** |
+| Verify Identity | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Verify Asset | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+*Owner can update their own DID document only  
+**Public audit log shows anonymized data (wallet addresses, not PII)
+
+---
+
+## 5. Data Flows
+
+### 5.1 Identity Creation Flow
+```
+User (Admin) → Frontend: "Create Identity" form
+    ↓
+Frontend → Backend: POST /api/identities { wallet, role }
+    ↓
+Backend → Smart Contract: IdentityRegistry.createIdentity(wallet, did, role)
+    ↓
+Contract: Emits IdentityCreated event
+    ↓
+Indexer (Backend): Catches event → Stores in PostgreSQL
+    ↓
+Frontend: Polls/WS → Shows success + DID
+```
+
+### 5.2 Asset Mint & Assignment Flow
+```
+User (Manager/Admin) → Frontend: "Mint Asset" + metadata upload to IPFS
+    ↓
+Frontend → Backend: POST /api/assets/mint { metadataURI, toDid? }
+    ↓
+Backend → Contract: AssetNFT.mint(toWallet, metadataURI)
+    ↓
+Contract: Emits AssetMinted + (if assigned) AssetAssigned events
+    ↓
+Indexer: Updates PostgreSQL (asset record, ownership link)
+    ↓
+Frontend: Shows new asset in dashboard
+```
+
+### 5.3 Asset Transfer Flow (Peer-to-Peer)
+```
+User (Owner) → Frontend: "Transfer Asset" → Select recipient DID
+    ↓
+Frontend → Backend: POST /api/assets/transfer { tokenId, toDid }
+    ↓
+Backend: Verifies caller owns tokenId (via contract view)
+    ↓
+Backend → Contract: AssetNFT.safeTransferFrom(from, toWallet, tokenId)
+    ↓
+Contract: Emits AssetTransferred event
+    ↓
+Indexer: Updates ownership in PostgreSQL
+    ↓
+Frontend: Updates both users' dashboards
+```
+
+### 5.4 Permission Check Flow (Every Write Operation)
+```
+Frontend → Backend: API call with SIWE auth
+    ↓
+Backend: Extracts caller address from SIWE message
+    ↓
+Backend → Contract: RoleManager.hasRole(caller, requiredRole)
+    OR
+Backend → Contract: IdentityRegistry.getRole(caller) → check permission bitmask
+    ↓
+If allowed: Proceed to contract write
+If denied: Return 403 Forbidden (UI shows "Insufficient permissions")
+```
+
+### 5.5 Audit Query Flow
+```
+User (Auditor/Admin) → Frontend: Audit page with filters
+    ↓
+Frontend → Backend: GET /api/audit?action=ASSET_MINT&from=2024-01-01&to=2024-12-31
+    ↓
+Backend: Queries PostgreSQL (indexed events)
+    ↓
+Backend → Frontend: Paginated results + export option
+```
+
+---
+
+## 6. Backend Responsibilities
+
+| Responsibility | Details |
+|----------------|---------|
+| **API Layer** | REST endpoints for all contract interactions; request validation; rate limiting |
+| **Authentication** | SIWE (Sign-In with Ethereum) — stateless, wallet-based |
+| **Authorization** | Pre-flight permission checks via contract reads before writes |
+| **Event Indexing** | Background worker listening to contract events → upserts PostgreSQL |
+| **IPFS Pinning** | Upload metadata/assets to IPFS (Pinata/local node) → return CID |
+| **Database** | Prisma models for: Identity, Asset, AuditLog, RoleAssignment |
+| **WebSocket** | Real-time updates to frontend (new asset, role change, audit entry) |
+| **Error Handling** | Structured error responses; contract revert reason decoding |
+
+### 6.1 Key API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | /api/auth/siwe | None | Verify SIWE message, return JWT |
+| POST | /api/identities | Admin | Create new DID identity |
+| GET | /api/identities/:did | Any | Resolve DID document |
+| PUT | /api/identities/:did | Owner/Admin | Update DID document |
+| DELETE | /api/identities/:did | Admin | Revoke identity |
+| POST | /api/roles/assign | Admin | Assign role to DID |
+| DELETE | /api/roles/revoke | Admin | Revoke role from DID |
+| POST | /api/assets/mint | Manager/Admin | Mint new NFT |
+| POST | /api/assets/assign | Manager/Admin | Assign NFT to DID |
+| POST | /api/assets/transfer | Owner/Manager/Admin | Transfer NFT |
+| DELETE | /api/assets/:tokenId | Manager/Admin | Burn NFT |
+| GET | /api/assets/:tokenId | Any | Get asset + ownership history |
+| GET | /api/audit | Auditor/Admin | Filtered audit log |
+| GET | /api/audit/export | Auditor/Admin | CSV/JSON export |
+| GET | /api/verify/ownership/:did/:tokenId | Any | Verify ownership proof |
+
+---
+
+## 7. Frontend Responsibilities
+
+| Page/Component | Responsibility |
+|----------------|----------------|
+| **Dashboard** | Stats cards (total identities, assets, roles), recent activity feed, role distribution chart |
+| **Identities** | Table with CRUD: create identity, assign/revoke roles, view DID document, verify |
+| **Assets** | Grid/table: mint (IPFS upload), assign, transfer, burn, view metadata + history |
+| **Roles** | Permission matrix visualization; role assignment UI |
+| **Audit** | Filterable timeline (date, action, actor, target); export buttons; tx hash links to explorer |
+| **Verify** | Public page: input DID or tokenId → show on-chain proof (no wallet needed) |
+| **Wallet Connect** | RainbowKit modal; network switch prompt (localhost/Sepolia); account display |
+
+### 7.1 State Management
+- **TanStack Query (React Query)** for server state (caching, invalidation, optimistic updates)
+- **Wagmi hooks** for contract reads/writes and wallet state
+- **Zustand** for lightweight client-only UI state (sidebar, modals, filters)
+
+### 7.2 Key UX Flows for Demo
+1. **Admin onboarding** — Connect wallet → auto-detect admin role → dashboard loads
+2. **Identity creation** — Form → meta-tx (backend pays gas for demo) → shows DID
+3. **Role assignment** — Dropdown → contract write → real-time badge update
+4. **Asset mint** — Drag-drop image → auto-upload IPFS → mint → appears in grid
+5. **Asset assign** — Click asset → "Assign" → search DID → confirm → ownership updates
+6. **Verification** — Public URL `/verify/asset/123` → shows immutable proof
+
+---
+
+## 8. Database Responsibilities (PostgreSQL + Prisma)
+
+### 8.1 Schema (Prisma Models)
+
+```prisma
+model Identity {
+  id            String   @id @default(cuid())
+  did           String   @unique  // did:ethr:0x...
+  wallet        String   @unique  // lowercase address
+  role          Role     @default(USER)
+  didDocument   String?  // IPFS hash
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  assets        Asset[]
+  auditLogs     AuditLog[]
+}
+
+model Asset {
+  id            String   @id @default(cuid())
+  tokenId       BigInt   @unique
+  metadataURI   String
+  name          String
+  description   String?
+  image         String?
+  assetType     AssetType
+  serialNumber  String?
+  currentOwner  String   // wallet address
+  creator       String   // wallet address
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  transfers     Transfer[]
+  auditLogs     AuditLog[]
+}
+
+model Transfer {
+  id        String   @id @default(cuid())
+  tokenId   BigInt
+  from      String
+  to        String
+  txHash    String   @unique
+  blockNumber Int
+  timestamp DateTime @default(now())
+  asset     Asset    @relation(fields: [tokenId], references: [tokenId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      AuditAction
+  actor       String   // wallet address
+  targetDid   String?
+  targetToken BigInt?
+  txHash      String   @unique
+  blockNumber Int
+  metadata    Json?    // flexible extra data
+  timestamp   DateTime @default(now())
+  identity    Identity? @relation(fields: [targetDid], references: [did])
+  asset       Asset?   @relation(fields: [targetToken], references: [tokenId])
+}
+
+enum Role { ADMIN MANAGER AUDITOR USER }
+enum AssetType { DIGITAL PHYSICAL }
+enum AuditAction {
+  IDENTITY_CREATED IDENTITY_UPDATED IDENTITY_REVOKED
+  ROLE_ASSIGNED ROLE_REVOKED
+  ASSET_MINTED ASSET_ASSIGNED ASSET_TRANSFERRED ASSET_BURNED METADATA_UPDATED
+}
+```
+
+### 8.2 Indexing Strategy
+- **Event listener** (viem) watches contract events from latest block
+- **Batch upserts** every 500ms or 50 events (whichever first)
+- **Reorg handling:** On chain reorg, rollback last N blocks + re-index
+- **Checkpointing:** Store last indexed block in DB for resume
+
+---
+
+## 9. Smart Contract Responsibilities
+
+### 9.1 Contract Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SIHBlockchainIAM (Main)                   │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌────────┐ │
+│  │IdentityRegis│ │ RoleManager │ │  AssetNFT   │ │AuditLog│ │
+│  │    try      │ │             │ │             │ │  ger   │ │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Deployment Pattern:** Diamond/Proxy not needed for SIH demo. Single deployment script deploys all 4 contracts + wires permissions.
+
+### 9.2 Contract Details
+
+#### IdentityRegistry.sol
+- `mapping(string => Identity) public identities;` // did → Identity
+- `mapping(address => string) public walletToDid;`
+- `function createIdentity(address wallet, string did, uint8 role) external onlyRole(ADMIN_ROLE)`
+- `function updateDIDDocument(string did, string newDocHash) external onlyRole(ADMIN_ROLE) onlyIdentityOwner(did)`
+- `function revokeIdentity(string did) external onlyRole(ADMIN_ROLE)`
+- `function getRole(string did) external view returns (uint8)`
+
+#### RoleManager.sol (extends AccessControl)
+- Defines 10 permission bytes32 constants
+- `function hasPermission(address account, bytes32 permission) external view returns (bool)`
+- `function getRolePermissions(uint8 role) external pure returns (bytes32[])` — returns permission list for role
+- Role → Permission mapping stored in immutable `bytes32[5][]` (index = role enum)
+
+#### AssetNFT.sol (extends ERC721, ERC721URIStorage, AccessControl)
+- `function mint(address to, string metadataURI) external onlyRole(MINTER_ROLE) returns (uint256)`
+- `function assign(uint256 tokenId, string toDid) external onlyRole(ASSIGNER_ROLE)`
+- `function safeTransferFrom(...) external override` — adds audit event emission
+- `function burn(uint256 tokenId) external onlyRole(BURNER_ROLE)`
+- `function updateTokenURI(uint256 tokenId, string newURI) external onlyRole(METADATA_UPDATER_ROLE)`
+- `function getOwnershipHistory(uint256 tokenId) external view returns (Transfer[])`
+
+#### AuditLogger.sol
+- `event AuditEvent(bytes32 indexed action, address indexed actor, string targetDid, uint256 targetToken, string metadata)`
+- `function log(bytes32 action, string targetDid, uint256 targetToken, string metadata) external`
+- Called by other contracts via `IAuditLogger(auditLoggerAddress).log(...)`
+
+### 9.3 Security Patterns
+- **ReentrancyGuard** on all state-changing functions
+- **AccessControl** for role-based authorization (not just `onlyOwner`)
+- **Pausable** for emergency stop (admin only)
+- **Input validation:** `require(bytes(did).length > 0)`, `require(tokenId > 0)`
+- **No private keys in code** — deployer keys only in `.env` (gitignored)
+
+---
+
+## 10. Security Requirements
+
+| Requirement | Implementation |
+|-------------|----------------|
+| **On-chain enforcement** | All authorization in smart contracts, not just UI/backend |
+| **Reentrancy protection** | OpenZeppelin `ReentrancyGuard` on all `external` state-changing functions |
+| **Access control** | OpenZeppelin `AccessControl` + custom role-permission mapping |
+| **Input validation** | Solidity `require` + backend Zod schemas |
+| **Private key management** | `.env` only; never committed; hardware wallet for production deploy |
+| **SIWE authentication** | Backend verifies SIWE message + nonce; short-lived JWT (15min) |
+| **Rate limiting** | Backend: 100 req/min per IP; 30 writes/min per wallet |
+| **CORS/HTTPS** | Strict CORS origins; HTTPS enforced in production |
+| **Audit trail immutability** | Events on-chain + indexed DB (DB can be rebuilt from chain) |
+| **Frontend/backend consistency** | Both check permissions; backend is source of truth for API |
+| **Gas optimization** | `packed` structs, `calldata` for read-only, minimal storage writes |
+
+---
+
+## 11. Minimum Viable Implementation (MVI) for SIH Demo
+
+**Goal:** Convincing end-to-end demo in 10 minutes showing all core problem-statement requirements.
+
+### ✅ MUST HAVE (MVI Scope)
+
+| Feature | Contract | Backend | Frontend | Priority |
+|---------|----------|---------|----------|----------|
+| Deploy 4 contracts locally | ✅ | — | — | P0 |
+| Admin creates identity (DID) | ✅ | ✅ | ✅ | P0 |
+| Assign roles (Admin/Manager/Auditor/User) | ✅ | ✅ | ✅ | P0 |
+| Mint NFT with IPFS metadata | ✅ | ✅ | ✅ | P0 |
+| Assign NFT to identity | ✅ | ✅ | ✅ | P0 |
+| Transfer NFT between identities | ✅ | ✅ | ✅ | P0 |
+| Burn NFT | ✅ | ✅ | ✅ | P0 |
+| Immutable audit log (events → DB) | ✅ | ✅ | ✅ | P0 |
+| Public verify page (DID + Asset) | ✅ | ✅ | ✅ | P0 |
+| Wallet connect (MetaMask) | — | ✅ | ✅ | P0 |
+| SIWE auth for API | — | ✅ | ✅ | P0 |
+| Real-time dashboard updates | — | ✅ | ✅ | P0 |
+| Role-based UI hiding (Manager sees mint, User doesn't) | — | — | ✅ | P0 |
+
+### ❌ OUT OF SCOPE (Optional / Post-SIH)
+
+| Feature | Reason |
+|---------|--------|
+| Verifiable Credentials (W3C VC) | Not in problem statement; adds complexity |
+| Cross-chain / L2 deployment | Demo on local Hardhat + Sepolia sufficient |
+| Mobile app / PWA | Web dashboard sufficient for demo |
+| Advanced analytics / graphs | Basic stats + audit timeline sufficient |
+| Multi-sig admin governance | Single admin key OK for demo |
+| IPFS cluster / self-hosted | Pinata / web3.storage free tier fine |
+| Gasless/meta-tx for users | Backend pays gas for demo (admin wallet funded) |
+| Email/notification system | Not required by problem statement |
+| Physical asset IoT integration | "Digital/physical" = metadata field only |
+
+---
+
+## 12. Recommended Implementation Order
+
+This order minimizes dependencies and prevents rework. Each phase produces a working, testable increment.
+
+### Phase 0: Foundation (Day 1)
+```
+[ ] Initialize monorepo (contracts/, backend/, frontend/)
+[ ] Hardhat config + OpenZeppelin install
+[ ] Prisma schema + PostgreSQL (Docker)
+[ ] Next.js 14 + Tailwind + Wagmi + RainbowKit setup
+[ ] Shared TypeScript types package (optional but recommended)
+[ ] CI/CD pipeline (GitHub Actions: lint, typecheck, test)
+```
+
+### Phase 1: Smart Contracts Core (Days 2-3)
+```
+[ ] IdentityRegistry.sol + tests
+[ ] RoleManager.sol (AccessControl + permissions) + tests
+[ ] AssetNFT.sol (ERC721 + access control) + tests
+[ ] AuditLogger.sol + tests
+[ ] Deploy script (localhost + Sepolia)
+[ ] Integration test: full flow (create identity → mint → assign → transfer → audit)
+```
+
+### Phase 2: Backend API + Indexer (Days 4-5)
+```
+[ ] Express + TypeScript + Prisma setup
+[ ] SIWE authentication middleware
+[ ] Contract ABIs + viem clients (read + write)
+[ ] Event indexer worker (background process)
+[ ] REST endpoints for all MVI operations
+[ ] IPFS upload endpoint (Pinata SDK)
+[ ] WebSocket server for real-time updates
+[ ] API integration tests
+```
+
+### Phase 3: Frontend Dashboard (Days 6-7)
+```
+[ ] Layout: sidebar, header, wallet connect, network switch
+[ ] Dashboard page: stats + recent activity (WS)
+[ ] Identities page: table + create modal + role assign
+[ ] Assets page: grid + mint modal (IPFS upload) + assign/transfer/burn
+[ ] Roles page: permission matrix + assignment UI
+[ ] Audit page: filterable table + export + tx hash links
+[ ] Verify page: public (no auth) DID/asset lookup
+[ ] Role-based UI rendering (hide unauthorized actions)
+```
+
+### Phase 4: Polish & Demo Prep (Days 8-9)
+```
+[ ] End-to-end test on local Hardhat network
+[ ] Sepolia testnet deployment + frontend config
+[ ] Demo script rehearsal (10-min flow)
+[ ] Error handling + loading states + empty states
+[ ] README + architecture diagram + demo video recording
+[ ] SIH evaluation criteria mapping document
+```
+
+### Phase 5: Buffer / Stretch (Day 10+)
+```
+[ ] Unit test coverage >80% contracts
+[ ] Load test backend (artillery/k6)
+[ ] Accessibility audit (axe)
+[ ] Production deployment docs (Docker, Vercel, RDS)
+```
+
+---
+
+## 13. Risk Mitigation
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Contract bugs found late | Medium | High | Write tests FIRST (TDD); use OpenZeppelin; static analysis (Slither) |
+| Indexer falls behind / misses events | Medium | Medium | Checkpointing + reorg handling; health endpoint monitoring |
+| IPFS upload fails in demo | Low | High | Pre-upload demo assets; have local IPFS node backup |
+| MetaMask connection issues | Medium | Medium | Clear network switch UI; localhost + Sepolia configs ready |
+| Gas estimation fails on local node | Low | Medium | Hardhat node auto-mine; fund admin wallet with 10000 ETH |
+| Time overrun | High | High | Strict MVI scope; cut optional features ruthlessly |
+
+---
+
+## 14. SIH Evaluation Criteria Mapping
+
+| SIH Criterion | How This Project Addresses It |
+|---------------|------------------------------|
+| **Innovation** | DID + RBAC + NFT + Audit unified on-chain; not just "NFT marketplace" |
+| **Technical Complexity** | 4 contracts, event indexing, real-time sync, wallet auth, IPFS |
+| **Problem Relevance** | Directly solves centralized IAM risks + asset provenance |
+| **Feasibility** | MVI runs on local Hardhat; no external dependencies for demo |
+| **Scalability** | Architecture supports L2 (Arbitrum/Optimism) + sharding |
+| **Security** | On-chain enforcement, reentrancy guard, AccessControl, SIWE |
+| **Presentation** | 10-min live demo script; public verify page for judges to test |
+
+---
+
+## 15. File Structure (Final)
+
+```
+sih-blockchain-iam/
+├── contracts/
+│   ├── contracts/
+│   │   ├── IdentityRegistry.sol
+│   │   ├── RoleManager.sol
+│   │   ├── AssetNFT.sol
+│   │   ├── AuditLogger.sol
+│   │   └── interfaces/
+│   ├── test/
+│   │   ├── IdentityRegistry.test.ts
+│   │   ├── RoleManager.test.ts
+│   │   ├── AssetNFT.test.ts
+│   │   └── integration.test.ts
+│   ├── scripts/
+│   │   └── deploy.ts
+│   ├── hardhat.config.ts
+│   └── package.json
+├── backend/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── middleware/
+│   │   │   ├── auth.ts (SIWE)
+│   │   │   ├── validation.ts (Zod)
+│   │   │   └── rateLimit.ts
+│   │   ├── routes/
+│   │   │   ├── auth.ts
+│   │   │   ├── identities.ts
+│   │   │   ├── roles.ts
+│   │   │   ├── assets.ts
+│   │   │   ├── audit.ts
+│   │   │   └── verify.ts
+│   │   ├── services/
+│   │   │   ├── contracts.ts (viem clients)
+│   │   │   ├── indexer.ts (event listener)
+│   │   │   ├── ipfs.ts
+│   │   │   └── websocket.ts
+│   │   ├── utils/
+│   │   └── app.ts
+│   ├── prisma/
+│   │   └── schema.prisma
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── dashboard/
+│   │   │   ├── identities/
+│   │   │   ├── assets/
+│   │   │   ├── roles/
+│   │   │   ├── audit/
+│   │   │   └── verify/
+│   │   ├── components/
+│   │   │   ├── ui/ (shadcn)
+│   │   │   ├── layout/
+│   │   │   └── features/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   │   ├── wagmi.ts
+│   │   │   ├── query.ts
+│   │   │   └── utils.ts
+│   │   └── types/
+│   ├── tailwind.config.ts
+│   └── package.json
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── IMPLEMENTATION_PLAN.md
+│   ├── TESTING.md
+│   ├── DEPLOYMENT.md
+│   ├── DEMO_SCRIPT.md
+│   └── SIH_EVALUATION.md
+├── docker-compose.yml (PostgreSQL + Hardhat node)
+├── .env.example
+└── README.md
+```
+
+---
+
+## 16. Next Steps
+
+1. **Confirm scope** — Review MVI vs. optional features with team
+2. **Initialize repo** — Create monorepo structure per Section 15
+3. **Start Phase 0** — Foundation setup (can be done in parallel by 2-3 people)
+4. **Daily standups** — Track against Phase 1-4 timeline
+5. **Demo rehearsal** — Day 9, record video as backup
+
+---
+
+*This blueprint is the single source of truth for implementation. Any deviation requires architectural review.*

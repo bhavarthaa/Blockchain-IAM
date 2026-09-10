@@ -1,0 +1,27 @@
+"use client";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "../../lib/api";
+import type { Role } from "../../lib/types";
+import { Shell } from "../../components/shell";
+import { Badge, Empty, ErrorCard, Loading, Modal } from "../../components/ui";
+import { Icon } from "../../components/icons";
+import { usePermissions } from "../../components/permissions";
+
+const permissionMatrix = ["IDENTITY_CREATE", "IDENTITY_UPDATE", "IDENTITY_REVOKE", "ROLE_ASSIGN", "ASSET_MINT", "ASSET_ASSIGN", "ASSET_TRANSFER", "ASSET_METADATA_UPDATE", "ASSET_BURN", "AUDIT_EXPORT"];
+export default function RolesPage() {
+  const [assigning, setAssigning] = useState(false); const [notice, setNotice] = useState<string | null>(null); const client = useQueryClient();
+  const permissions = usePermissions();
+  const query = useQuery({ queryKey: ["roles"], queryFn: async () => (await api<Role[]>("/api/v1/roles")).data });
+  const roles = query.data ?? [];
+  const assignment = useMutation({ mutationFn: (body: { did: string; role: string; account: string }) => api("/api/v1/roles/assign", { method: "POST", body: JSON.stringify(body) }), onSuccess: () => { setAssigning(false); setNotice("Role assignment transaction submitted."); client.invalidateQueries({ queryKey: ["roles"] }); }, onError: (e) => setNotice(e instanceof Error ? e.message : "Assignment failed") });
+  return <Shell title="Roles & permissions" description="Inspect the indexed on-chain permission matrix and delegate role assignments." action={<button className="btn btn-primary" disabled={permissions.loading || !permissions.can("ROLE_ASSIGN")} title={!permissions.loading && !permissions.can("ROLE_ASSIGN") ? "Requires ROLE_ASSIGN" : undefined} onClick={() => setAssigning(true)}><Icon name="plus" size={15}/>Assign role</button>}>
+    {notice && <div className="mb-4 flex items-center justify-between rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning"><span>{notice}</span><button onClick={() => setNotice(null)}><Icon name="x" size={15}/></button></div>}
+    {query.isLoading ? <Loading rows={5}/> : query.error ? <ErrorCard error={query.error} retry={() => query.refetch()}/> : !roles.length ? <Empty title="No role catalog" description="Role configuration will appear after the indexer has loaded the configured chain."/> : <div className="card overflow-hidden"><div className="overflow-x-auto"><table className="min-w-[900px] w-full text-left text-sm"><thead className="border-b border-line/70 bg-surface/50 text-xs text-muted"><tr><th className="sticky left-0 bg-surface px-4 py-3 text-left font-medium">Role</th>{permissionMatrix.map((permission) => <th key={permission} className="px-3 py-3 text-center font-medium"><span className="[writing-mode:vertical-rl]">{permission.replaceAll("_", " ")}</span></th>)}<th className="px-3 py-3 text-right font-medium">Assigned</th></tr></thead><tbody className="divide-y divide-line/60">{roles.map((role) => <tr key={role.name} className="hover:bg-surface/40"><td className="sticky left-0 bg-panel px-4 py-3 font-medium">{role.displayName ?? role.name}</td>{permissionMatrix.map((permission) => { const item = role.permissions?.find((x) => (x.permission.key ?? x.permission.name) === permission); return <td key={permission} className="px-3 py-3 text-center">{item?.enabled ? <span className="inline-flex rounded-full bg-success/10 p-1 text-success"><Icon name="check" size={13}/></span> : <span className="text-line">—</span>}</td>; })}<td className="px-3 py-3 text-right font-medium">{role._count?.assignments ?? 0}</td></tr>)}</tbody></table></div><p className="border-t border-line/60 px-4 py-3 text-xs text-muted">Permission source: indexed smart-contract configuration. Changes require authorization and are independently enforced on-chain.</p></div>}
+    {assigning && <AssignRole onClose={() => setAssigning(false)} pending={assignment.isPending} onSubmit={(body) => assignment.mutate(body)}/>}
+  </Shell>;
+}
+function AssignRole({ onClose, onSubmit, pending }: { onClose: () => void; onSubmit: (body: { did: string; role: string; account: string }) => void; pending: boolean }) {
+  const [body, setBody] = useState({ did: "", role: "", account: "" });
+  return <Modal title="Assign role" onClose={onClose}><form className="space-y-4" onSubmit={(e) => { e.preventDefault(); onSubmit(body); }}><label className="block"><span className="eyebrow">Target DID</span><input required className="field mt-1" value={body.did} onChange={(e) => setBody({ ...body, did: e.target.value })} placeholder="did:…"/></label><label className="block"><span className="eyebrow">Role bytes32</span><input required pattern="0x[0-9a-fA-F]{64}" className="field mt-1 font-mono" value={body.role} onChange={(e) => setBody({ ...body, role: e.target.value })} placeholder="0x…"/></label><label className="block"><span className="eyebrow">Target wallet</span><input required pattern="0x[0-9a-fA-F]{40}" className="field mt-1 font-mono" value={body.account} onChange={(e) => setBody({ ...body, account: e.target.value })} placeholder="0x…"/></label><p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">The API checks ROLE_ASSIGN and the contract enforces final authorization. Review the target before signing.</p><button className="btn btn-primary w-full" disabled={pending}>{pending ? "Submitting…" : "Review and assign"}</button></form></Modal>;
+}

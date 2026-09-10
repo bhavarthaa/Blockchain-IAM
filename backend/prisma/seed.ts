@@ -298,6 +298,7 @@ async function main(): Promise<void> {
       logIndex: 0,
       topics: ["Transfer", wallets.MANAGER, wallets.USER, "0x01"],
       data: {},
+      parameters: { from: wallets.MANAGER, to: wallets.USER, tokenId: "1" },
       status: "PROCESSED",
       observedAt: now,
       processedAt: now,

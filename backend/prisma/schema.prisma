@@ -330,10 +330,18 @@ model IndexedEvent {
   topic0           String?               @db.Char(66)
   topics           Json
   data             Json
+  /// ABI-decoded event arguments. Values that do not fit JSON (for example
+  /// uint256 and bytes32) are represented as their canonical hex/decimal
+  /// strings.
+  parameters       Json
+  confirmations    Int                   @default(0)
   status           EventProcessingStatus @default(PENDING)
   processingError  String?
+  retryCount       Int                   @default(0)
+  nextRetryAt      DateTime?
   observedAt       DateTime              @default(now())
   processedAt      DateTime?
+  revertedAt       DateTime?
 
   transaction        BlockchainTransaction @relation(fields: [transactionId], references: [id])
   rolePermissions    RolePermission[]
@@ -422,6 +430,21 @@ model IndexerCheckpoint {
   @@unique([chainId, scope])
   @@index([chainId, lastProcessedBlock])
   @@map("indexer_checkpoints")
+}
+
+/// A small amount of canonical block history lets the worker find a common
+/// ancestor after a restart/reorg, including ranges that contained no logs.
+model IndexerBlock {
+  id          String   @id @default(cuid())
+  chainId     Int
+  scope       String   @db.VarChar(128)
+  blockNumber BigInt
+  blockHash   String   @db.Char(66)
+  createdAt   DateTime @default(now())
+
+  @@unique([chainId, scope, blockNumber])
+  @@index([chainId, scope, blockNumber])
+  @@map("indexer_blocks")
 }
 
 model AuthNonce {

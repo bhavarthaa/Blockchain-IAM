@@ -1,7 +1,9 @@
-# Backend database foundation
+# Blockchain IAM backend
 
-This directory contains the Prisma/PostgreSQL projection layer only. API routes,
-authentication, and indexer workers are intentionally not included yet.
+This directory contains the modular Express API, SIWE authentication,
+Prisma/PostgreSQL projections, relayed blockchain transaction lifecycle, and
+checkpointed/indexed event ingestion. Smart contracts remain authoritative;
+the database is never updated optimistically by request handlers.
 
 ## Local setup
 
@@ -24,7 +26,8 @@ npm run db:setup
 `db:setup` generates the client, applies committed migrations, and runs the
 idempotent development seed. The seed contains public-looking placeholder
 addresses and hashes only; it never stores private keys, seed phrases, or
-signatures.
+signatures. Copy `.env.example` to `.env` and configure deployed contract
+addresses before using blockchain writes.
 
 To stop the local database without deleting its data:
 
@@ -40,7 +43,10 @@ npm run db:validate
 npm run db:migrate:deploy
 npm run db:seed
 npm run typecheck
+npm test
 ```
 
-All contract-derived values remain projections. Authorization and ownership
-decisions must still be checked against the configured contracts.
+Run the API with `npm run dev` or `npm start`. Every write requires an
+`Idempotency-Key`, returns `202`/`SUBMITTED`, and becomes a final projection
+only after the receipt/indexer observes canonical events. `RELAYER_PRIVATE_KEY`
+is optional for read-only deployments and must never be logged or committed.

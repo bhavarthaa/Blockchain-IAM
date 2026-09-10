@@ -423,3 +423,50 @@ model IndexerCheckpoint {
   @@index([chainId, lastProcessedBlock])
   @@map("indexer_checkpoints")
 }
+
+model AuthNonce {
+  id         String    @id @default(cuid())
+  nonce      String    @unique @db.VarChar(128)
+  address    String    @db.VarChar(42)
+  chainId    Int
+  domain     String    @db.VarChar(255)
+  uri        String    @db.VarChar(2048)
+  issuedAt   DateTime
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([address, chainId, expiresAt])
+  @@map("auth_nonces")
+}
+
+model AuthSession {
+  id         String    @id @default(cuid())
+  tokenId    String    @unique @db.VarChar(128)
+  address    String    @db.VarChar(42)
+  chainId    Int
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([address, chainId, expiresAt])
+  @@map("auth_sessions")
+}
+
+model IdempotencyRecord {
+  id            String   @id @default(cuid())
+  key           String   @db.VarChar(255)
+  route         String   @db.VarChar(255)
+  walletAddress String   @db.VarChar(42)
+  requestHash   String   @db.Char(64)
+  operationId   String?
+  response      Json?
+  statusCode    Int?
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@unique([walletAddress, route, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}

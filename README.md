@@ -92,6 +92,12 @@ development projections for Admin, Manager, Auditor, and User roles. Set
 `DATABASE_URL` from `backend/.env.example` first; never commit real database
 credentials.
 
+For event-backed identity, role, asset, ownership, and audit views, run the
+backend with `INDEXER_ENABLED=true` after deployment and set
+`DEPLOYMENT_BLOCK` to the contract deployment block. The API intentionally
+does not claim indexed state until the indexer has observed confirmed chain
+events.
+
 ### 6. Start Services
 ```bash
 # Terminal 1: Backend

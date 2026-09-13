@@ -13,6 +13,7 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@types/node": "^20.14.10",
+    "fp-ts": "^2.16.9",
     "hardhat": "^2.22.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"

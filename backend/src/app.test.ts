@@ -29,4 +29,10 @@ describe("HTTP foundation", () => {
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
+
+  it("does not accept unverifiable audit requests without an indexed event id", async () => {
+    const response = await request(app).post("/api/v1/verifications").send({ type: "AUDIT" });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
 });

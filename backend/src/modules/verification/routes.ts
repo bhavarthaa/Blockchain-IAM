@@ -81,9 +81,29 @@ verificationRouter.get("/ownership/:did/:tokenId", asyncHandler(async (req, res)
   sendData(res, req, { verified: asset.currentOwner?.address === identity.wallet.address, did: identity.did, wallet: identity.wallet.address, tokenId: parsedToken.data, owner: asset.currentOwner?.address ?? null, checkedAtBlock: String(asset.mintedBlockNumber) });
 }));
 verificationRouter.post("/", asyncHandler(async (req, res) => {
-  const body = z.object({ type: z.enum(["DID", "ASSET", "OWNERSHIP", "AUDIT"]), did: did.optional(), tokenId: token.optional() }).strict().safeParse(req.body);
+  const body = z.object({ type: z.enum(["DID", "ASSET", "OWNERSHIP", "AUDIT"]), did: did.optional(), tokenId: token.optional(), eventId: z.string().cuid().optional() }).strict().safeParse(req.body);
   if (!body.success) throw ApiError.badRequest("Invalid verification request", body.error.flatten());
-  if (body.data.type === "DID" && !body.data.did || body.data.type !== "DID" && !body.data.tokenId) throw ApiError.badRequest("Verification type requires its subject");
-  const result = body.data.type === "DID" ? await directDid(body.data.did!, config.CHAIN_ID) : { result: "VERIFIED", source: "indexed" };
+  if (body.data.type === "DID" && !body.data.did) throw ApiError.badRequest("DID verification requires a DID");
+  if ((body.data.type === "ASSET" || body.data.type === "OWNERSHIP") && !body.data.tokenId) throw ApiError.badRequest("Verification type requires a token ID");
+  if (body.data.type === "OWNERSHIP" && !body.data.did) throw ApiError.badRequest("Ownership verification requires a DID");
+  if (body.data.type === "AUDIT" && !body.data.eventId) throw ApiError.badRequest("Audit verification requires an event ID");
+
+  let result: unknown;
+  if (body.data.type === "DID") {
+    result = await directDid(body.data.did!, config.CHAIN_ID);
+  } else if (body.data.type === "ASSET") {
+    const asset = await prisma.asset.findFirst({ where: { chainId: config.CHAIN_ID, tokenId: BigInt(body.data.tokenId!) }, include: { currentOwner: true } });
+    if (!asset) throw ApiError.notFound("Asset not found");
+    result = { result: asset.status === "ACTIVE" ? "VERIFIED" : "NOT_FOUND", tokenId: body.data.tokenId, owner: asset.currentOwner?.address ?? null, source: "indexed", status: asset.status };
+  } else if (body.data.type === "OWNERSHIP") {
+    const identity = await prisma.identity.findUnique({ where: { chainId_did: { chainId: config.CHAIN_ID, did: body.data.did! } }, include: { wallet: true } });
+    const asset = await prisma.asset.findFirst({ where: { chainId: config.CHAIN_ID, tokenId: BigInt(body.data.tokenId!) }, include: { currentOwner: true } });
+    if (!identity || !asset) throw ApiError.notFound("DID or asset not found");
+    result = { result: asset.status === "ACTIVE" && asset.currentOwner?.address.toLowerCase() === identity.wallet.address.toLowerCase() ? "VERIFIED" : "MISMATCH", did: identity.did, tokenId: body.data.tokenId, owner: asset.currentOwner?.address ?? null, wallet: identity.wallet.address, source: "indexed" };
+  } else {
+    const event = await prisma.indexedEvent.findUnique({ where: { id: body.data.eventId! } });
+    if (!event || event.status !== "PROCESSED") throw ApiError.notFound("Indexed audit event not found");
+    result = { result: "VERIFIED", eventId: event.id, eventName: event.eventName, transactionHash: event.transactionHash, blockNumber: String(event.blockNumber), source: "indexed" };
+  }
   sendData(res, req, result);
 }));

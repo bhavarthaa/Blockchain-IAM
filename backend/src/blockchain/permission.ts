@@ -21,10 +21,7 @@ const constantForPermission: Record<string, string> = {
 
 export async function hasOnChainPermission(wallet: `0x${string}`, permission: string): Promise<boolean> {
   const address = configuredAddress(config.ROLE_MANAGER_ADDRESS);
-  if (!address) {
-    if (config.NODE_ENV === "production") throw ApiError.unavailable("RoleManager is not configured");
-    return true;
-  }
+  if (!address) throw ApiError.unavailable("RoleManager is not configured");
   const constant = constantForPermission[permission];
   if (!constant) throw ApiError.forbidden(`Unknown permission ${permission}`);
   try {

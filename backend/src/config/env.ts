@@ -17,14 +17,13 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
   CONFIRMATIONS_REQUIRED: z.coerce.number().int().min(0).default(2),
   INDEXER_POLL_MS: z.coerce.number().int().min(250).default(5000),
+  INDEXER_BATCH_SIZE: z.coerce.number().int().min(1).max(10_000).default(2_000),
   INDEXER_ENABLED: z.preprocess((value) => value === true || value === "true", z.boolean()).default(false),
   DEPLOYMENT_BLOCK: z.coerce.bigint().min(0n).default(0n),
 });
 
 const parsed = envSchema.safeParse(process.env);
-if (!parsed.success) {
-  throw new Error(`Invalid environment: ${parsed.error.message}`);
-}
+if (!parsed.success) throw new Error(`Invalid environment: ${parsed.error.message}`);
 
 export const config = parsed.data;
 if (config.NODE_ENV === "production" && config.SESSION_SECRET === "development-only-change-me-please-32-chars") {

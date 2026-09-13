@@ -6,6 +6,7 @@ import { AssetNFTAbi, AuditLoggerAbi, IdentityRegistryAbi, RoleManagerAbi } from
 import { config } from "../../config/env.js";
 import { logger } from "../../logger.js";
 import { detectReorg } from "./reorg.js";
+import { projectIndexedEvent } from "./projections.js";
 
 export type ChainLog = {
   chainId: number;
@@ -277,7 +278,7 @@ export async function ingestLog(
   }
 }
 
-async function ingestBatch(
+export async function ingestBatch(
   logs: DecodedChainLog[],
   chainId: number,
   scope: string,
@@ -290,7 +291,12 @@ async function ingestBatch(
 ): Promise<void> {
   try {
     await prisma.$transaction(async (tx) => {
-      for (const log of logs) await ingestDecodedLog(tx, log, confirmations, project);
+      const orderedLogs = [...logs].sort((left, right) =>
+        left.blockNumber < right.blockNumber ? -1 :
+          left.blockNumber > right.blockNumber ? 1 :
+            (left.transactionIndex ?? Number.MAX_SAFE_INTEGER) - (right.transactionIndex ?? Number.MAX_SAFE_INTEGER) ||
+            left.logIndex - right.logIndex);
+      for (const log of orderedLogs) await ingestDecodedLog(tx, log, confirmations, project);
       await tx.indexerBlock.upsert({
         where: { chainId_scope_blockNumber: { chainId, scope, blockNumber: toBlock } },
         create: { chainId, scope, blockNumber: toBlock, blockHash: normalizeHex(blockHash) },
@@ -427,6 +433,7 @@ export class IndexerWorker {
         toBlock,
         block.hash,
         confirmationCount,
+        projectIndexedEvent,
       );
     } finally {
       this.running = false;

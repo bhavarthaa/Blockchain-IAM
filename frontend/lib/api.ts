@@ -1,6 +1,6 @@
 import type { Asset, Envelope, Identity } from "./types";
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const tokenKey = "iam_access_token";
 
 export function getToken() {

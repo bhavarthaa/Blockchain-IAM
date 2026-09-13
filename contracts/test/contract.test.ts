@@ -168,5 +168,40 @@ describe("Blockchain IAM contracts", function () {
       );
       expect(await assets.ownerOf(1)).to.equal(await receiver.getAddress());
     });
+
+    it("executes the complete identity, asset, audit, transfer, and revocation flow", async function () {
+      const { admin, manager, user, other, registry, assets, roleManager, audit } = await deploy();
+      const auditor = (await ethers.getSigners())[4];
+      const userRole = await roleManager.USER_ROLE();
+      const auditorRole = await roleManager.AUDITOR_ROLE();
+      const transferPermission = await roleManager.ASSET_TRANSFER();
+
+      await identity(registry, admin.address, "did:iam:admin", 0);
+      await identity(registry, user.address, "did:iam:user");
+      await identity(registry, auditor.address, "did:iam:auditor", 2);
+      await identity(registry, other.address, "did:iam:other");
+      await registry.assignRole("did:iam:user", userRole, user.address);
+      await registry.assignRole("did:iam:auditor", auditorRole, auditor.address);
+
+      await assets.connect(manager).mint(admin.address, "ipfs://flow");
+      await assets.connect(manager).assign(1, "did:iam:user");
+      expect(await assets.ownerOf(1)).to.equal(user.address);
+      expect((await assets.getOwnershipHistory(1)).length).to.equal(2);
+
+      const resolved = await registry.resolveDID("did:iam:user");
+      expect(resolved.wallet).to.equal(user.address);
+      expect(await assets.ownerOf(1)).to.equal(user.address);
+      expect(await audit.getEventCount()).to.be.greaterThan(0);
+
+      await expect(assets.connect(other).transferAsset(other.address, admin.address, 1))
+        .to.be.revertedWithCustomError(assets, "MissingPermission");
+      await assets.connect(user).transferAsset(user.address, other.address, 1);
+      expect(await assets.ownerOf(1)).to.equal(other.address);
+
+      await roleManager.setPermission(userRole, transferPermission, false);
+      await expect(assets.connect(user).transferAsset(other.address, admin.address, 1))
+        .to.be.revertedWithCustomError(assets, "MissingPermission");
+      expect(await audit.getEventCount()).to.be.greaterThan(0);
+    });
   });
 });

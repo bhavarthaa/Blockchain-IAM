@@ -104,6 +104,11 @@ export type ProjectionHandler = (
   eventId: string,
 ) => Promise<void>;
 
+/** Effective confirmations for current mode (0 in demo for instant finality). */
+function effectiveConfirmations(): number {
+  return config.DEMO_MODE ? 0 : config.CONFIRMATIONS_REQUIRED;
+}
+
 export function finalizedBlock(head: bigint, confirmations: number): bigint {
   const required = BigInt(confirmations);
   return head >= required ? head - required : -1n;
@@ -390,7 +395,7 @@ export class IndexerWorker {
       }
 
       const head = await publicClient.getBlockNumber();
-      const finalizedHead = finalizedBlock(head, config.CONFIRMATIONS_REQUIRED);
+            const finalizedHead = finalizedBlock(head, effectiveConfirmations());
       const fromBlock = checkpoint?.nextBlock ?? this.deploymentBlock;
       if (fromBlock > finalizedHead) return;
       const batchSize = BigInt(config.INDEXER_BATCH_SIZE);

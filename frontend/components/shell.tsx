@@ -9,7 +9,7 @@ import { WalletControl } from "./wallet-control";
 import { api } from "../lib/api";
 
 const groups = [
-  { label: "01 / Overview", links: [{ label: "Command center", href: "/", icon: "grid" }] },
+  { label: "01 / Overview", links: [{ label: "Command center", href: "/", icon: "grid" }, { label: "Hackathon Demo", href: "/demo", icon: "flask-conical" }] },
   { label: "02 / Identity", links: [{ label: "Identities", href: "/identities", icon: "users" }, { label: "Roles & policy", href: "/roles", icon: "shield" }] },
   { label: "03 / Custody", links: [{ label: "Assets", href: "/assets", icon: "box" }, { label: "Transactions", href: "/transactions", icon: "activity" }] },
   { label: "04 / Evidence", links: [{ label: "Audit stream", href: "/audit", icon: "clock" }, { label: "Verify proof", href: "/verify", icon: "check" }] },

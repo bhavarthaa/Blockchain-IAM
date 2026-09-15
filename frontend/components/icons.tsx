@@ -22,6 +22,7 @@ export function Icon({ name, size = 17, className }: { name: string; size?: numb
     arrow: <><path d="M5 12h14M13 6l6 6-6 6"/></>,
     chevron: <path d="m6 9 6 6 6-6"/>,
     pulse: <><circle cx="12" cy="12" r="9"/><path d="M7 12h2l1.5-3 3 6 1.5-3H17"/></>,
-  };
+        "flask-conical": <><path d="M10 2v7.31M14 2v7.31M8.5 2h7"/><path d="M14 9.31a6.5 6.5 0 0 1-1 13.21A1 1 0 0 1 12 22a1 1 0 0 1-1-1c0-3.23 1-6.23 3-8.49"/></>,
+      };
   return <svg {...common}>{paths[name] ?? paths.grid}</svg>;
 }

@@ -16,6 +16,7 @@ import { verificationRouter } from "./modules/verification/routes.js";
 import { auditRouter } from "./modules/audit/routes.js";
 import { transactionRouter } from "./modules/transactions/routes.js";
 import { indexerRouter } from "./modules/indexing/routes.js";
+import { demoRouter } from "./modules/demo/routes.js";
 import { hasOnChainPermission } from "./blockchain/permission.js";
 
 export function createApp() {
@@ -35,6 +36,7 @@ export function createApp() {
 
   app.get("/health", (_req, res) => res.json({ data: { status: "ok", chainId: config.CHAIN_ID } }));
   app.get("/ready", (_req, res) => res.json({ data: { status: "ready", chainId: config.CHAIN_ID } }));
+    app.get("/debug/config", (_req, res) => res.json({ data: { demoMode: config.DEMO_MODE, demoDbUrl: config.DEMO_DATABASE_URL } }));
 
   const api = express.Router();
   api.use("/auth", authRouter);
@@ -48,7 +50,8 @@ export function createApp() {
   api.use("/audit", auditRouter);
   api.use("/transactions", transactionRouter);
   api.use("/indexer", indexerRouter);
-  app.use("/api/v1", api);
+    api.use("/demo", demoRouter);
+    app.use("/api/v1", api);
 
   app.use((_req, _res, next) => next(Object.assign(new Error("Route not found"), { status: 404, code: "NOT_FOUND" })));
   app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {

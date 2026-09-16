@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { app } from "./app.js";
 import { config } from "./config/env.js";
 import { logger } from "./logger.js";
@@ -5,7 +6,7 @@ import { disconnectPrisma } from "./db/prisma.js";
 import { IndexerWorker } from "./modules/indexing/indexer.js";
 
 const server = app.listen(config.PORT, () => logger.info({ port: config.PORT }, "backend listening"));
-const indexer = config.INDEXER_ENABLED ? new IndexerWorker("platform", config.DEPLOYMENT_BLOCK) : undefined;
+const indexer = config.INDEXER_ENABLED && !config.DEMO_MODE ? new IndexerWorker("platform", config.DEPLOYMENT_BLOCK) : undefined;
 if (indexer) indexer.start();
 function shutdown(signal: string) {
   logger.info({ signal }, "shutting down");

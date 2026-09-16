@@ -1,9 +1,16 @@
 import { z } from "zod";
 
+const urlOrFileSchema = z.string().refine((val) => val.startsWith("postgresql://") || val.startsWith("postgres://") || val.startsWith("file:") || val.startsWith("sqlite:"), {
+  message: "Must be a valid PostgreSQL URL or SQLite file path",
+});
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  DATABASE_URL: z.string().url().default("postgresql://postgres:postgres@localhost:5432/blockchain_iam?schema=public"),
+  DATABASE_URL: urlOrFileSchema.default("postgresql://postgres:postgres@localhost:5432/blockchain_iam?schema=public"),
+  DEMO_DATABASE_URL: urlOrFileSchema.optional(),
+  DEMO_MODE: z.preprocess((value) => value === true || value === "true", z.boolean()).default(false),
+  DEMO_WALLET_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   RPC_URL: z.string().url().default("http://127.0.0.1:8545"),
   CHAIN_ID: z.coerce.number().int().positive().default(31337),
   IDENTITY_REGISTRY_ADDRESS: z.string().optional(),
